@@ -20,14 +20,15 @@ RUN set -eux; \
     curl --proto '=https' --tlsv1.2 -fsSL --retry 3 https://sh.rustup.rs -o /root/rustup-init; \
     chmod +x /root/rustup-init; \
     /root/rustup-init -y --no-modify-path --profile minimal \
-        --default-toolchain "$RUST_VERSION" \
-        --component rust-src,llvm-tools-preview,rustfmt,clippy \
-        --target riscv64gc-unknown-none-elf; \
+    --default-toolchain "$RUST_VERSION" \
+    --component rust-src,llvm-tools-preview,rustfmt,clippy \
+    --target riscv64gc-unknown-none-elf; \
     rm /root/rustup-init; \
     cargo install cargo-binutils --version 0.4.0 --locked; \
     rustc --version; \
     cargo --version; \
-    rust-objcopy --version
+    rust-objcopy --version; \
+    git config --global --add safe.directory /mnt
 
 WORKDIR /mnt
 CMD ["/bin/bash"]
