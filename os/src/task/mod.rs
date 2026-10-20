@@ -14,6 +14,8 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use core::borrow::{Borrow, BorrowMut};
+
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
@@ -45,6 +47,8 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+
+    syscall_cnt: [usize; MAX_APP_NUM],
 }
 
 lazy_static! {
@@ -65,6 +69,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscall_cnt: [0;MAX_APP_NUM],
                 })
             },
         }
@@ -135,6 +140,20 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+}
+
+///recode the count of syscalls
+pub fn syscall_count_increase() {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let curr_task_id = inner.current_task;
+    inner.borrow_mut().syscall_cnt[curr_task_id] += 1;
+}
+
+///get the current task syscall count
+pub fn curr_task_syscall_count() -> usize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let curr_task_id = inner.current_task;
+    *inner.borrow().syscall_cnt.get(curr_task_id).unwrap()
 }
 
 /// Run the first task in task list.
