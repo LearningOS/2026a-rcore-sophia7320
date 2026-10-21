@@ -63,6 +63,57 @@ impl MemorySet {
             None,
         );
     }
+
+    /// mmap an area
+    pub fn mmap(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: usize) -> isize {
+        let perm = MapPermission::from_bits((permission << 1) as u8).unwrap() | MapPermission::U;
+
+        if self.areas.iter().any(|area| {
+            start_va.floor().max(area.vpn_range.get_start())
+                < end_va.ceil().min(area.vpn_range.get_end())
+        }) {
+            return -1;
+        }
+
+        if let Some(area) = self
+            .areas
+            .iter_mut()
+            .find(|area| area.vpn_range.get_start() == start_va.floor())
+        {
+            area.vpn_range = VPNRange::new(start_va.floor(), end_va.ceil());
+            area.map_perm = perm;
+            area.map(&mut self.page_table);
+            return 0;
+        }
+
+        let mut new_area = MapArea::new(start_va, end_va, MapType::Framed, perm);
+        new_area.map(&mut self.page_table);
+        self.areas.push(new_area);
+        0
+    }
+
+    /// unmap an area
+    pub fn munmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let vpn_st = start_va.floor();
+        let vpn_ed = end_va.ceil();
+
+        if let Some(area) = self
+            .areas
+            .iter_mut()
+            .find(|area| area.vpn_range.get_start() == vpn_st)
+        {
+            if area.vpn_range.get_end() < vpn_ed {
+                return -1;
+            }
+
+            area.unmap(&mut self.page_table);
+            area.vpn_range = VPNRange::new(vpn_st, vpn_st);
+            return 0;
+        }
+
+        -1
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {

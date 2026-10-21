@@ -28,6 +28,9 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+
+    /// systemcall_count
+    pub systemcall_count: [usize; 512],
 }
 
 impl TaskControlBlock {
@@ -39,6 +42,7 @@ impl TaskControlBlock {
     pub fn get_user_token(&self) -> usize {
         self.memory_set.token()
     }
+
     /// Based on the elf info in program, build the contents of task in a new address space
     pub fn new(elf_data: &[u8], app_id: usize) -> Self {
         // memory_set with elf program headers/trampoline/trap context/user stack
@@ -63,6 +67,7 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            systemcall_count: [0; 512],
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();

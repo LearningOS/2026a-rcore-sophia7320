@@ -133,6 +133,40 @@ impl TaskManager {
         inner.tasks[cur].change_program_brk(size)
     }
 
+    /// Let current task map a new area
+    pub fn current_map_new_area(&self, _start: usize, _len: usize, _port: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+
+        inner.tasks[cur]
+            .memory_set
+            .mmap(_start.into(), (_start + _len).into(), _port)
+    }
+
+    /// unmap current task memory
+    pub fn current_unmap(&self, _start: usize, _len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+
+        inner.tasks[cur]
+            .memory_set
+            .munmap(_start.into(), (_start + _len).into())
+    }
+
+    /// increase current task's systemcall count
+    pub fn current_increase_systemcall_count(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].systemcall_count[syscall_id] += 1;
+    }
+
+    /// get current task syscall count
+    pub fn current_get_systemcall_count(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].systemcall_count[syscall_id]
+    }
+
     /// Switch current `Running` task to the task we have found,
     /// or there is no `Ready` task and we can exit with all applications completed
     fn run_next_task(&self) {
@@ -201,4 +235,24 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+///Map new area
+pub fn current_map_new_area(_start: usize, _len: usize, _port: usize) -> isize {
+    TASK_MANAGER.current_map_new_area(_start, _len, _port)
+}
+
+/// unmap areas
+pub fn current_unmap(_start: usize, _len: usize) -> isize {
+    TASK_MANAGER.current_unmap(_start, _len)
+}
+
+/// current task syscall count increase
+pub fn current_increase_systemcall_count(syscall_id: usize) {
+    TASK_MANAGER.current_increase_systemcall_count(syscall_id)
+}
+
+/// get the current task syscall count
+pub fn current_get_systemcall_count(syscall_id: usize) -> usize {
+    TASK_MANAGER.current_get_systemcall_count(syscall_id)
 }
