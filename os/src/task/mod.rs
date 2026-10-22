@@ -21,7 +21,10 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::loader::get_app_data_by_name;
+use crate::{
+    loader::get_app_data_by_name,
+    mm::{MapPermission, VirtAddr},
+};
 use alloc::sync::Arc;
 use lazy_static::*;
 pub use manager::{fetch_task, TaskManager};
@@ -99,6 +102,26 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // we do not have to save task context
     let mut _unused = TaskContext::zero_init();
     schedule(&mut _unused as *mut _);
+}
+
+/// map an area
+pub fn mmap(va_st: VirtAddr, va_ed: VirtAddr, perm: MapPermission) -> isize {
+    let task = take_current_task().unwrap();
+
+    let mut task_inner = task.inner_exclusive_access();
+
+    task_inner
+        .memory_set
+        .check_and_insert_framed_area(va_st, va_ed, perm | MapPermission::U)
+}
+
+/// unmap an area
+pub fn munmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    let task = take_current_task().unwrap();
+    let mut task_inner = task.inner_exclusive_access();
+    task_inner
+        .memory_set
+        .check_and_remove_area(start_va, end_va)
 }
 
 lazy_static! {

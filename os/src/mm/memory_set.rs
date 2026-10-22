@@ -48,6 +48,23 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
+    /// check , insert and map an new area
+    pub fn check_and_insert_framed_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) -> isize {
+        if self.areas.iter().any(|area| {
+            start_va.floor().max(area.vpn_range.get_start())
+                < end_va.ceil().min(area.vpn_range.get_end())
+        }) {
+            return -1;
+        }
+
+        self.insert_framed_area(start_va, end_va, permission);
+        0
+    }
     /// Assume that no conflicts.
     pub fn insert_framed_area(
         &mut self,
@@ -60,6 +77,19 @@ impl MemorySet {
             None,
         );
     }
+    /// check and remove an area
+    pub fn check_and_remove_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        if self.areas.iter().any(|area| {
+            area.vpn_range.get_start() == start_va.floor()
+                && area.vpn_range.get_end() < end_va.ceil()
+        }) {
+            return -1;
+        }
+
+        self.remove_area_with_start_vpn(start_va.floor());
+        0
+    }
+
     /// remove a area
     pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
         if let Some((idx, area)) = self
