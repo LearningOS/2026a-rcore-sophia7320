@@ -4,6 +4,7 @@ use core::iter::zip;
 use alloc::sync::Arc;
 
 use crate::{
+    config::PAGE_SIZE,
     loader::get_app_data_by_name,
     mm::{translated_byte_buffer, translated_refmut, translated_str, MapPermission, VirtAddr},
     task::{
@@ -132,16 +133,23 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+    trace!("kernel:pid[{}] sys_mmap", current_task().unwrap().pid.0);
+
+    if _start & (PAGE_SIZE - 1) != 0 || _port & 0x7 == 0 || _port & !0x7 != 0 {
+        return -1;
+    }
 
     let va_st = VirtAddr(_start);
     let va_ed = VirtAddr(_start + _len);
     let perm = MapPermission::from_bits((_port << 1) as u8).unwrap();
 
-    mmap(va_st, va_ed, perm)
+    let ret = mmap(va_st, va_ed, perm);
+    trace!(
+        "kernel:pid[{}] sys_mmap completed res => {}",
+        current_task().unwrap().pid.0,
+        ret
+    );
+    ret
 }
 
 /// YOUR JOB: Implement munmap.
@@ -150,6 +158,10 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    if _start & (PAGE_SIZE - 1) != 0 {
+        return -1;
+    }
+
     let start_va = VirtAddr(_start);
     let end_va = VirtAddr(_start + _len);
 
@@ -196,5 +208,9 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    _prio
+    if _prio > 1 {
+        _prio
+    } else {
+        -1
+    }
 }

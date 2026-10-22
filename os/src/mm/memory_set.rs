@@ -86,6 +86,14 @@ impl MemorySet {
             return -1;
         }
 
+        if self
+            .areas
+            .iter()
+            .all(|area| area.vpn_range.get_start() != start_va.floor())
+        {
+            return -1;
+        }
+
         self.remove_area_with_start_vpn(start_va.floor());
         0
     }
