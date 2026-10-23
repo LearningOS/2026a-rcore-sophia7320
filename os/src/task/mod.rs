@@ -106,7 +106,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
 
 /// map an area
 pub fn mmap(va_st: VirtAddr, va_ed: VirtAddr, perm: MapPermission) -> isize {
-    let task = take_current_task().unwrap();
+    let task = current_task().unwrap();
 
     let mut task_inner = task.inner_exclusive_access();
 
@@ -117,8 +117,9 @@ pub fn mmap(va_st: VirtAddr, va_ed: VirtAddr, perm: MapPermission) -> isize {
 
 /// unmap an area
 pub fn munmap(start_va: VirtAddr, end_va: VirtAddr) -> isize {
-    let task = take_current_task().unwrap();
+    let task = current_task().unwrap();
     let mut task_inner = task.inner_exclusive_access();
+
     task_inner
         .memory_set
         .check_and_remove_area(start_va, end_va)
