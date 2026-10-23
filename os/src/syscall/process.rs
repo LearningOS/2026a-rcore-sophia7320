@@ -185,11 +185,17 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    panic!("unimpl");
+    // panic!("unimpl");
     let path = translated_str(current_user_token(), _path);
-    let new_task = Arc::new(TaskControlBlock::new(
-        get_app_data_by_name(path.as_str()).unwrap(),
-    ));
+    let elf_data;
+
+    if let Some(file) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        elf_data = file.read_all();
+    } else {
+        return -1;
+    }
+
+    let new_task = Arc::new(TaskControlBlock::new(elf_data.as_slice()));
     let cur_task = current_task().unwrap();
 
     let mut cur_inner = cur_task.inner_exclusive_access();
