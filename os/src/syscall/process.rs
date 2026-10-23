@@ -6,9 +6,10 @@ use crate::{
     fs::{open_file, OpenFlags},
     mm::{translated_refmut, translated_str},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next,
+        add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
+        suspend_current_and_run_next, TaskControlBlock,
     },
+    timer::get_time,
 };
 
 #[repr(C)]
@@ -67,7 +68,11 @@ pub fn sys_exec(path: *const u8) -> isize {
 /// If there is not a child process whose pid is same as given, return -1.
 /// Else if there is a child process but it is still running, return -2.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
-    //trace!("kernel: sys_waitpid");
+    trace!(
+        "kernel::pid[{}] sys_waitpid [{}]",
+        current_task().unwrap().pid.0,
+        pid
+    );
     let task = current_task().unwrap();
     // find a child process
 
@@ -110,7 +115,17 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let time = get_time();
+    let tv = TimeVal {
+        sec: time / 1_000_000,
+        usec: time % 1_000_000,
+    };
+
+    let src = unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(tv) as *const u8, 16) };
+    let dst = translated_byte_buffer(current_user_token(), _ts as *const u8, 16);
+
+    zip(src.iter(), dst.into_iter().flatten()).for_each(|(s, d)| *d = *s);
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -119,7 +134,12 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    let va_st = VirtAddr(_start);
+    let va_ed = VirtAddr(_start + _len);
+    let perm = MapPermission::from_bits((_port << 1) as u8).unwrap();
+
+    mmap(va_st, va_ed, perm)
 }
 
 /// YOUR JOB: Implement munmap.
@@ -128,7 +148,10 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let start_va = VirtAddr(_start);
+    let end_va = VirtAddr(_start + _len);
+
+    munmap(start_va, end_va)
 }
 
 /// change data segment size
@@ -148,7 +171,21 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let path = translated_str(current_user_token(), _path);
+    let new_task = Arc::new(TaskControlBlock::new(
+        get_app_data_by_name(path.as_str()).unwrap(),
+    ));
+    let cur_task = current_task().unwrap();
+
+    let mut cur_inner = cur_task.inner_exclusive_access();
+
+    cur_inner.children.push(new_task.clone());
+
+    let mut new_inner = new_task.inner_exclusive_access();
+    new_inner.parent = Some(Arc::downgrade(&cur_task));
+
+    add_task(new_task.clone());
+    new_task.pid.0 as isize
 }
 
 // YOUR JOB: Set task priority.
@@ -157,5 +194,5 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    _prio
 }
