@@ -1,10 +1,13 @@
 //! Process management syscalls
 //!
+use core::iter::zip;
+
 use alloc::sync::Arc;
 
 use crate::{
+    config::PAGE_SIZE,
     fs::{open_file, OpenFlags},
-    mm::{translated_refmut, translated_str},
+    mm::{translated_byte_buffer, translated_refmut, translated_str, MapPermission, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
         suspend_current_and_run_next, TaskControlBlock,
@@ -182,6 +185,7 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    panic!("unimpl");
     let path = translated_str(current_user_token(), _path);
     let new_task = Arc::new(TaskControlBlock::new(
         get_app_data_by_name(path.as_str()).unwrap(),

@@ -22,7 +22,10 @@ mod switch;
 #[allow(rustdoc::private_intra_doc_links)]
 mod task;
 
-use crate::mm::{MapPermission, VirtAddr};
+use crate::{
+    fs::{open_file, OpenFlags},
+    mm::{MapPermission, VirtAddr},
+};
 use alloc::sync::Arc;
 pub use context::TaskContext;
 use lazy_static::*;
