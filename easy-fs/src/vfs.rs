@@ -120,7 +120,9 @@ impl Inode {
 
         (new_data_blocks..=old_data_blocks)
             .skip(1)
-            .for_each(|unuse_block_id| fs.dealloc_data(unuse_block_id))
+            .for_each(|unuse_block_id| {
+                fs.dealloc_data(disk_inode.get_block_id(unuse_block_id, &self.block_device))
+            })
     }
 
     /// Create inode under current inode by name
