@@ -1,10 +1,13 @@
+use core::iter::zip;
+
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_ref, translated_refmut, translated_str},
+    mm::{translated_byte_buffer, translated_ref, translated_refmut, translated_str},
     task::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags,
     },
+    timer::get_time,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 
@@ -152,11 +155,24 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
-    );
-    -1
+    // trace!(
+    //     "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+    //     current_task().unwrap().process.upgrade().unwrap().getpid()
+    // );
+    let token = current_user_token();
+
+    let time = get_time();
+
+    let tv = TimeVal {
+        sec: time / 1_000_000,
+        usec: time % 1_000_000,
+    };
+
+    let src = unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(tv) as *const u8, 16) };
+
+    let dst = translated_byte_buffer(token, _ts as *mut u8, 16);
+    zip(dst.into_iter().flatten(), src.iter()).for_each(|(d, s)| *d = *s);
+    0
 }
 
 /// mmap syscall

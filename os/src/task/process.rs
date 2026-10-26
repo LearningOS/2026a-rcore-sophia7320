@@ -8,12 +8,14 @@ use super::{pid_alloc, PidHandle};
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
 use crate::sync::{Condvar, Mutex, Semaphore, UPSafeCell};
+use crate::task::current_task;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use core::iter::zip;
 
 /// Process Control Block
 pub struct ProcessControlBlock {
@@ -43,6 +45,13 @@ pub struct ProcessControlBlockInner {
     pub tasks: Vec<Option<Arc<TaskControlBlock>>>,
     /// task resource allocator
     pub task_res_allocator: RecycleAllocator,
+    /// the matric of mutex being used
+    pub tasks_mutex_current: Option<Vec<Vec<u16>>>,
+    /// the matric of requiring
+    pub tasks_mutex_requiring: Option<Vec<Vec<u16>>>,
+    pub tasks_sem_requiring: Option<Vec<Vec<i16>>>,
+    pub tasks_sem_current: Option<Vec<Vec<i16>>>,
+    pub tasks_sem_exist: Option<Vec<i16>>,
     /// mutex list
     pub mutex_list: Vec<Option<Arc<dyn Mutex>>>,
     /// semaphore list
@@ -119,6 +128,11 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    tasks_mutex_current: None,
+                    tasks_mutex_requiring: None,
+                    tasks_sem_requiring: None,
+                    tasks_sem_current: None,
+                    tasks_sem_exist: None,
                 })
             },
         });
@@ -245,6 +259,11 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    tasks_mutex_requiring: None,
+                    tasks_mutex_current: None,
+                    tasks_sem_requiring: None,
+                    tasks_sem_current: None,
+                    tasks_sem_exist: None,
                 })
             },
         });
@@ -281,5 +300,114 @@ impl ProcessControlBlock {
     /// get pid
     pub fn getpid(&self) -> usize {
         self.pid.0
+    }
+
+    pub fn mutex_matric_ensure(&self) {
+        let mut inner = self.inner_exclusive_access();
+        let n_row = inner.tasks.len();
+        let n_col = inner.mutex_list.len();
+        ProcessControlBlock::matric_ensure(&mut inner.tasks_mutex_current, n_row, n_col);
+        ProcessControlBlock::matric_ensure(&mut inner.tasks_mutex_requiring, n_row, n_col);
+    }
+
+    pub fn sem_matric_ensure(&self) {
+        let mut inner = self.inner_exclusive_access();
+        let n_row = inner.tasks.len();
+        let n_col = inner.semaphore_list.len();
+        ProcessControlBlock::matric_ensure(&mut inner.tasks_sem_requiring, n_row, n_col);
+        ProcessControlBlock::matric_ensure(&mut inner.tasks_sem_current, n_row, n_col);
+        inner
+            .tasks_sem_exist
+            .get_or_insert(Vec::new())
+            .resize(n_col, 0)
+    }
+
+    fn matric_ensure<T: Default>(m: &mut Option<Vec<Vec<T>>>, n_row: usize, n_col: usize) {
+        let m = m.get_or_insert(Vec::new());
+        m.resize_with(n_row, Vec::new);
+        m.iter_mut()
+            .for_each(|row| row.resize_with(n_col, T::default));
+    }
+
+    /// dead clock detected
+    pub fn mutex_deadlock_detect(&self, mutex_id: usize) -> bool {
+        let inner = self.inner_exclusive_access();
+        let task_id = current_task()
+            .unwrap()
+            .inner_exclusive_access()
+            .res
+            .as_ref()
+            .unwrap()
+            .tid;
+
+        let current = &inner.tasks_mutex_current.as_ref().unwrap();
+        let mut requiring = inner.tasks_mutex_requiring.clone().unwrap();
+        let mut available = vec![0usize; current[0].len()];
+
+        let mut finished = vec![false; current.len()];
+
+        for col in 0..current[0].len() {
+            current
+                .iter()
+                .for_each(|row| available[col] += row[col] as usize);
+        }
+
+        available.iter_mut().for_each(|val| *val ^= 1);
+
+        requiring[task_id][mutex_id] += 1;
+
+        while let Some((id, _)) = requiring.iter().enumerate().find(|(id, row)| {
+            !finished[*id]
+                && row
+                    .iter()
+                    .enumerate()
+                    .all(|(id, val)| *val as usize <= available[id])
+        }) {
+            zip(available.iter_mut(), current[id].iter()).for_each(|(d, s)| *d += *s as usize);
+            finished[id] = true;
+        }
+
+        !finished.iter().all(|v| *v)
+    }
+
+    /// dead clock detected
+    pub fn sem_deadlock_detect(&self, sem_id: usize) -> bool {
+        let inner = self.inner_exclusive_access();
+        let task_id = current_task()
+            .unwrap()
+            .inner_exclusive_access()
+            .res
+            .as_ref()
+            .unwrap()
+            .tid;
+
+        let current = inner.tasks_sem_current.as_ref().unwrap();
+        let mut requiring = inner.tasks_sem_requiring.clone().unwrap();
+        let mut available = inner.tasks_sem_exist.as_ref().unwrap().clone();
+        let mut finished = vec![false; current.len()];
+
+        debug!(
+            "current is {:?} \n available is {:?} \n requiring is {:?} ",
+            current, available, requiring
+        );
+
+        for col in 0..current[0].len() {
+            current.iter().for_each(|row| available[col] -= row[col]);
+        }
+
+        requiring[task_id][sem_id] += 1;
+
+        while let Some((id, _)) = requiring.iter().enumerate().find(|(id, row)| {
+            !finished[*id]
+                && row
+                    .iter()
+                    .enumerate()
+                    .all(|(id, val)| *val <= available[id])
+        }) {
+            zip(available.iter_mut(), current[id].iter()).for_each(|(d, s)| *d += *s);
+            finished[id] = true;
+        }
+
+        !finished.iter().all(|v| *v)
     }
 }

@@ -100,10 +100,10 @@ pub fn remove_timer(task: Arc<TaskControlBlock>) {
 
 /// Check if the timer has expired
 pub fn check_timer() {
-    trace!(
-        "kernel:pid[{}] check_timer",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
-    );
+    // trace!(
+    //     "kernel:pid[{}] check_timer",
+    //     current_task().unwrap().process.upgrade().unwrap().getpid()
+    // );
     let current_ms = get_time_ms();
     let mut timers = TIMERS.exclusive_access();
     while let Some(timer) = timers.peek() {
